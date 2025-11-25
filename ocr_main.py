@@ -10,6 +10,12 @@ import numpy as np
 from keywords_and_weights import MINISTRY_KEYWORDS, PRIORITY_WEIGHTS
 from transformers import pipeline, MBartForConditionalGeneration, MBart50TokenizerFast
 
+# --- FastAPI imports ---
+from fastapi import FastAPI, UploadFile, File
+from fastapi.responses import JSONResponse
+
+app = FastAPI()
+
 class OCRProcessor:
     def __init__(self):
         self.tesseract_cmd = r"C:\Program Files\Tesseract-OCR\tesseract.exe"
@@ -99,7 +105,6 @@ class OCRProcessor:
             scores["General"] = 0
             hits["General"] = []
         ministries = sorted(ministries, key=lambda x: scores.get(x,0), reverse=True)
-        # Return only the highest scoring ministry
         ministry = ministries[0] if ministries else "General"
         return ministry, scores, hits
 
@@ -143,7 +148,6 @@ class OCRProcessor:
         sentiment_label, sentiment_score = self.analyze_sentiment_nlp(content_orig, lang)
         ts = datetime.now().isoformat() + "Z"
 
-        # Assemble your new output to match the required JSON structure
         output = {
             "image_name": os.path.basename(img_path),
             "extracted_text": content_orig,
@@ -153,9 +157,9 @@ class OCRProcessor:
             "sentiment_label": sentiment_label,
             "keywords": keywords[ministry][:10] if ministry in keywords else [],
             "metadata": {
-                "resolution": "Unknown",  # You can set actual if you prefer
+                "resolution": "Unknown",
                 "processed_by": "Your Name",
-                "confidence_score": 0.88,  # You can set real confidence if calculated
+                "confidence_score": 0.88,
                 "image_path": img_path
             }
         }
@@ -163,23 +167,16 @@ class OCRProcessor:
             output["metadata"]["edition_date"] = edition_date
         return output, None
 
-def main():
-    processor = OCRProcessor()
-    os.makedirs("outputs", exist_ok=True)
-    tests = [
-        ("data/hindi/hindi_sample.jpg", "2025-09-24", "hindi"),
-        ("data/bengali/bengali_sample-1.jpg", "2025-09-24", "bengali"),
-        ("data/kannada/kannada_sample-1.jpg", "2025-09-24", "kannada"),
-    ]
-    for img, ed, lang in tests:
-        res, err = processor.process_image(img, ed, lang)
-        fn = f"outputs/{lang}_updated.json"
-        if res:
-            with open(fn, "w", encoding="utf-8") as f:
-                json.dump(res, f, ensure_ascii=False, indent=2)
-            print(f"✅ Saved {fn}")
-        else:
-            print(f"❌ Error: {err}")
 
-if __name__ == "__main__":
-    main()
+processor = OCRProcessor()
+
+@app.post("/process")
+async def process_image(file: UploadFile = File(...), lang: str = "english", edition_date: str = None):
+    import tempfile
+    with tempfile.NamedTemporaryFile(delete=False, suffix=".jpg") as tmp:
+        tmp.write(await file.read())
+        tmp_path = tmp.name
+    res, err = processor.process_image(tmp_path, edition_date=edition_date, expected_lang=lang)
+    if err:
+        return JSONResponse(content={"error": err}, status_code=400)
+    return JSONResponse(content=res)
