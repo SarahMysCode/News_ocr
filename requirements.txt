@@ -8,3 +8,5 @@ torch
 gunicorn
 fastapi
 uvicorn
+protobuf
+sentencepiece
