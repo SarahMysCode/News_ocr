@@ -10,9 +10,27 @@ import numpy as np
 from keywords_and_weights import MINISTRY_KEYWORDS, PRIORITY_WEIGHTS
 from transformers import pipeline, MBartForConditionalGeneration, MBart50TokenizerFast
 
-# --- FastAPI imports ---
 from fastapi import FastAPI, UploadFile, File
 from fastapi.responses import JSONResponse
+import requests
+
+# External API config
+API_URL = "https://news-web-scraper-1.onrender.com/api/enews"
+HEADERS = {"X-API-KEY": "capstone@2025"}
+
+def send_to_api(payload):
+    try:
+        r = requests.post(API_URL, json=payload, headers=HEADERS, timeout=30)
+        if r.status_code in [200, 201]:
+            print(f"✅ Uploaded: {payload.get('image_name', 'Article')}")
+            print("API Response:", r.text)
+            return {"status": "success", "response": r.text}
+        else:
+            print(f"⚠ API upload failed ({r.status_code}): {r.text}")
+            return {"status": "error", "code": r.status_code, "response": r.text}
+    except Exception as e:
+        print(f"❌ Error sending to API: {e}")
+        return {"status": "error", "exception": str(e)}
 
 app = FastAPI()
 
@@ -98,7 +116,7 @@ class OCRProcessor:
                     if kw.lower() in tl:
                         sc += w; mk.append(kw)
             scores[m] = sc; hits[m] = mk
-        thr = 5  # wider inclusion
+        thr = 5
         ministries = [m for m, s in scores.items() if s >= thr]
         if not ministries:
             ministries = ["General"]
@@ -167,7 +185,6 @@ class OCRProcessor:
             output["metadata"]["edition_date"] = edition_date
         return output, None
 
-
 processor = OCRProcessor()
 
 @app.post("/process")
@@ -180,3 +197,16 @@ async def process_image(file: UploadFile = File(...), lang: str = "english", edi
     if err:
         return JSONResponse(content={"error": err}, status_code=400)
     return JSONResponse(content=res)
+
+@app.post("/process_and_send")
+async def process_and_send(file: UploadFile = File(...), lang: str = "english", edition_date: str = None):
+    import tempfile
+    with tempfile.NamedTemporaryFile(delete=False, suffix=".jpg") as tmp:
+        tmp.write(await file.read())
+        tmp_path = tmp.name
+    res, err = processor.process_image(tmp_path, edition_date=edition_date, expected_lang=lang)
+    if err:
+        return JSONResponse(content={"error": err}, status_code=400)
+    # Send OCR result to external API
+    api_result = send_to_api(res)
+    return JSONResponse(content={"ocr_result": res, "api_result": api_result})
