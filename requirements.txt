@@ -6,4 +6,5 @@ rapidfuzz
 transformers
 torch
 gunicorn
-
+fastapi
+uvicorn
