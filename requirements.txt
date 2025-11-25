@@ -5,3 +5,5 @@ Pillow
 rapidfuzz
 transformers
 torch
+gunicorn
+
