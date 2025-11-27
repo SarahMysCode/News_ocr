@@ -8,3 +8,6 @@ torch
 gunicorn
 keybert 
 sentence-transformers
+fastapi
+uvicorn
+requests
