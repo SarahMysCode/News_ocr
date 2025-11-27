@@ -6,7 +6,5 @@ rapidfuzz
 transformers
 torch
 gunicorn
-fastapi
-uvicorn
-protobuf
-sentencepiece
+keybert 
+sentence-transformers
